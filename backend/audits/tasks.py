@@ -5,7 +5,7 @@ import requests
 
 from audits.wpt_utils.status_and_info_extracter import extract_status_and_info
 from audits.models import Audit, AuditResults, AuditStatusHistory, AvailableStatuses
-from celery import shared_task
+from celery import shared_task, app
 from projects.models import NetworkShapeOptions, Page, Script, AvailableAuditParameters
 from audits.wpt_utils.normalizer import (
     format_wpt_json_results_for_page,
@@ -50,6 +50,7 @@ def request_audit(audit_uuid):
             details=str(response["data"]),
         )
         audit_status_queueing.save()
+        print('coucou1')
         poll_audit_results.apply_async(
             (audit_uuid, response["data"]["jsonUrl"]), countdown=15
         )
@@ -72,10 +73,13 @@ def request_audit(audit_uuid):
 
 @shared_task
 def poll_audit_results(audit_uuid, json_url):
+    print('coucou0')
     audit = Audit.objects.get(uuid=audit_uuid)
     r = requests.get(json_url)
+    print('coucou0.1')
     response = r.json()
     status_code = response.get("statusCode") or response["data"].get("statusCode")
+    print('coucou1.1')
     if status_code in [100, 101]:
         api_response = str(response["data"]["statusText"])
         status, info = extract_status_and_info(api_response)
@@ -85,12 +89,14 @@ def poll_audit_results(audit_uuid, json_url):
         audit_status_requested.save()
         poll_audit_results.apply_async((audit_uuid, json_url), countdown=15)
     elif status_code == 200:
+        print('coucou2')
         parsed_url = urlparse(json_url)
         test_id = parse_qs(parsed_url.query)["test"][0]
         wpt_results_user_url = f"https://www.webpagetest.org/result/{test_id}"
         try:
             if audit.page is not None:
                 project = audit.page.project
+                print('coucou3')
                 formatted_results_array = format_wpt_json_results_for_page(
                     response["data"]
                 )
